@@ -1,0 +1,60 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: ${APP_NAME}
+  namespace: ${NAMESPACE}
+spec:
+  replicas: ${REPLICA_COUNT}
+  selector:
+    matchLabels:
+      app: ${APP_NAME}
+  template:
+    metadata:
+      labels:
+        app: ${APP_NAME}
+      annotations:
+        linkerd.io/inject: enabled
+    spec:
+      containers:
+      - name: ${CONTAINER_NAME}
+        image: ${IMAGE_REPOSITORY}
+        ports:
+        - containerPort: ${CONTAINER_PORT}
+        env:
+        - name: SITE_ORIGIN
+          value: "${SITE_ORIGIN}"
+
+      imagePullSecrets:
+      - name: ${IMAGE_PULL_SECRET}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: ${APP_NAME}
+  namespace: ${NAMESPACE}
+spec:
+  selector:
+    app: ${APP_NAME}
+  ports:
+  - protocol: TCP
+    port: ${SERVICE_PORT}
+    targetPort: ${CONTAINER_PORT}
+  type: ${SERVICE_TYPE}
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: ${APP_NAME}-ingress
+  namespace: ${NAMESPACE}
+spec:
+  rules:
+  - host: ${INGRESS_HOST}
+    http:
+      paths:
+      - path: ${INGRESS_PATH}
+        pathType: ${INGRESS_PATH_TYPE}
+        backend:
+          service:
+            name: ${APP_NAME}
+            port:
+              number: ${SERVICE_PORT}

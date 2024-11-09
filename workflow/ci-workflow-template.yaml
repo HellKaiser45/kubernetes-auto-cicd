@@ -1,0 +1,176 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Workflow
+metadata:
+  generateName: ci-cd-workflow-
+spec:
+  # Use the ServiceAccount in the service namespace
+  serviceAccountName: $SERVICE_NAME-workflow-sa
+
+  # Define workflow-level parameters
+  arguments:
+    parameters:
+    - name: git-username
+      value: "$GIT_USERNAME"
+    - name: git-repo-name
+      value: "$GIT_REPO_NAME"
+    - name: git-repo-folder
+      value: "$SERVICE_FOLDER_NAME"
+
+    # Docker/Container Registry Parameters
+    - name: registry
+      value: "$REGISTRY"
+    - name: docker-username
+      value: "$DOCKER_USERNAME"
+    - name: image-name
+      value: "$SERVICE_NAME"
+    - name: branch
+      value: "$GIT_BRANCH"
+
+    # Deployment Parameters
+    - name: deployment-name
+      value: "$APP_NAME"
+    - name: deployment-namespace
+      value: "$SERVICE_NAMESPACE"
+
+  volumes:
+  - name: version-volume
+    persistentVolumeClaim:
+      claimName: version-pvc
+  # Use volumeClaimTemplates for automatic PVC management
+  volumeClaimTemplates:
+  - metadata:
+      name: workspace
+    spec:
+      accessModes: [ "ReadWriteOnce" ]
+      resources:
+        requests:
+          storage: 1Gi
+
+  entrypoint: ci-cd-pipeline
+  templates:
+  - name: ci-cd-pipeline
+    dag:
+      tasks:
+      - name: version-check
+        template: version-check
+
+      - name: clone-repo
+        template: clone-repository
+        dependencies: [ version-check ]
+        when: "{{tasks.version-check.outputs.parameters.result}} == 'changed'"
+        arguments:
+          parameters:
+          - name: version-result
+            value: "{{tasks.version-check.outputs.parameters.result}}"
+
+      - name: build-and-push
+        template: build-container
+        dependencies: [ clone-repo ]
+        when: "{{tasks.version-check.outputs.parameters.result}} == 'changed'"
+
+      - name: deploy-update
+        template: rollout-deployment
+        dependencies: [ build-and-push ]
+        when: "{{tasks.version-check.outputs.parameters.result}} == 'changed'"
+
+  # Version check step
+  - name: version-check
+    container:
+      image: ghcr.io/hellkaiser45/version-checker:latest
+      volumeMounts:
+      - name: version-volume
+        mountPath: /version-checker
+      env:
+      - name: REPO
+        value: "{{workflow.parameters.git-repo-name}}"
+      - name: GITHUB_USERNAME
+        value: "{{workflow.parameters.git-username}}"
+      - name: GITHUB_TOKEN
+        valueFrom:
+          secretKeyRef:
+            name: git-credentials
+            key: token
+      - name: FOLDER
+        value: "{{workflow.parameters.git-repo-folder}}"
+      - name: BRANCH
+        value: "{{workflow.parameters.branch}}"
+      - name: OUTPUT_FOLDER
+        value: "/version-checker"
+      - name: REPO_OWNER
+        value: "{{workflow.parameters.git-username}}"
+      - name: REPO_NAME
+        value: "{{workflow.parameters.git-repo-name}}"
+    outputs:
+      parameters:
+      - name: result
+        valueFrom:
+          path: /tmp/outputs/result
+          default: "unchanged"
+
+  # Clone repository step
+  - name: clone-repository
+    inputs:
+      parameters:
+      - name: version-result
+    container:
+      image: ghcr.io/hellkaiser45/git-clone:latest
+      volumeMounts:
+      - name: workspace
+        mountPath: /workspace
+      env:
+      - name: GITHUB_USERNAME
+        value: "{{workflow.parameters.git-username}}"
+      - name: REPOSITORY_NAME
+        value: "{{workflow.parameters.git-repo-name}}"
+      - name: GITHUB_TOKEN
+        valueFrom:
+          secretKeyRef:
+            name: git-credentials
+            key: token
+      - name: OUTPUT_DIR
+        value: /workspace
+      - name: BRANCH
+        value: "{{workflow.parameters.branch}}"
+
+  # Build and push container step
+  - name: build-container
+    container:
+      image: ghcr.io/hellkaiser45/docker-build:latest
+      volumeMounts:
+      - name: workspace
+        mountPath: /workspace
+      env:
+      - name: REGISTRY
+        value: "{{workflow.parameters.registry}}"
+      - name: USERNAME
+        value: "{{workflow.parameters.docker-username}}"
+      - name: IMAGE_NAME
+        value: "{{workflow.parameters.image-name}}"
+      - name: GITHUB_TOKEN
+        valueFrom:
+          secretKeyRef:
+            name: registry-credentials
+            key: token
+      - name: REPO_OWNER
+        value: "{{workflow.parameters.git-username}}"
+      - name: REPO_NAME
+        value: "{{workflow.parameters.git-repo-name}}"
+      - name: DOCKERFILE_PATH
+        value: "/workspace/{{workflow.parameters.git-repo-folder}}"
+      securityContext:
+        privileged: true
+
+  # Rollout deployment step
+  - name: rollout-deployment
+    container:
+      image: bitnami/kubectl:latest
+      command: [ "/bin/sh", "-c" ]
+      args:
+      - |
+        # Restart deployment
+        kubectl rollout restart deployment/{{workflow.parameters.deployment-name}} -n {{workflow.parameters.deployment-namespace}}
+
+        # Wait for rollout to complete
+        kubectl rollout status deployment/{{workflow.parameters.deployment-name}} -n {{workflow.parameters.deployment-namespace}}
+
+        # Optional: Verify deployment status

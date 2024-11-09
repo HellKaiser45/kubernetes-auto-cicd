@@ -1,0 +1,33 @@
+apiVersion: argoproj.io/v1alpha1
+kind: CronWorkflow
+metadata:
+  name: $SERVICE_NAME-repo-monitor
+  namespace: $SERVICE_NAMESPACE
+spec:
+  schedule: "$CRON_SCHEDULE"
+  concurrencyPolicy: Replace
+  workflowSpec:
+    workflowTemplateRef:
+      name: $SERVICE_NAME-ci-template
+    arguments:
+      parameters:
+      - name: git-username
+        value: "$GIT_USERNAME"
+      - name: git-repo-name
+        value: "$GIT_REPO_NAME"
+      - name: git-repo-folder
+        value: "$SERVICE_FOLDER_NAME"
+      - name: registry
+        value: "$REGISTRY"
+      - name: docker-username
+        value: "$DOCKER_USERNAME"
+      - name: image-name
+        value: "$SERVICE_NAME"
+      - name: branch
+        value: "$GIT_BRANCH"
+
+      # Deployment parameters
+      - name: deployment-name
+        value: "$APP_NAME"
+      - name: deployment-namespace
+        value: "$SERVICE_NAMESPACE"
