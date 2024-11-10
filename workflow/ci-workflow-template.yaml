@@ -1,12 +1,10 @@
 apiVersion: argoproj.io/v1alpha1
-kind: Workflow
+kind: WorkflowTemplate
 metadata:
   generateName: $SERVICE_NAME-workflow-
   name: $SERVICE_NAME-ci-template
+  namespace: $SERVICE_NAMESPACE
 spec:
-  # Use the ServiceAccount in the service namespace
-  serviceAccountName: $SERVICE_NAME-workflow-sa
-
   # Define workflow-level parameters
   arguments:
     parameters:
@@ -32,6 +30,9 @@ spec:
       value: "$APP_NAME"
     - name: deployment-namespace
       value: "$SERVICE_NAMESPACE"
+
+  # Use the ServiceAccount in the service namespace
+  serviceAccountName: $SERVICE_NAME-workflow-sa
 
   volumes:
   - name: version-volume
