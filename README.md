@@ -32,23 +32,23 @@ Streamline your Kubernetes deployments with this powerful CI/CD workflow templat
 ### 🎛 Variables to Configure
 
 #### 📝 In `deploy-and-workflow.sh`
-✦ `SERVICE_NAME`: Name of your service
-✦ `SERVICE_NAMESPACE`: Kubernetes namespace for deployment
-✦ `GIT_USERNAME`: Your GitHub username
-✦ `GIT_REPO_NAME`: Name of your GitHub repository
-✦ `SERVICE_FOLDER_NAME`: Folder containing your service code
-✦ `GIT_BRANCH`: Branch to monitor (default: main)
-✦ `REGISTRY`: Container registry (default: ghcr.io)
-✦ `DOCKER_USERNAME`: Docker/GitHub username
-✦ `IMAGE_REPOSITORY`: Full image repository path
-✦ `APP_NAME`: Application name for deployment
-✦ `REPLICA_COUNT`: Number of pod replicas
-✦ `SERVICE_PORT`: Service exposure port
-✦ `CONTAINER_PORT`: Container internal port
-✦ `SERVICE_TYPE`: Kubernetes service type
-✦ `CONTAINER_NAME`: Name of the container
-✦ `INGRESS_HOST`: Ingress hostname
-✦ `CRON_SCHEDULE`: Workflow schedule (default: every 30 minutes)
+✦ `SERVICE_NAME`: Name of your service <br />
+✦ `SERVICE_NAMESPACE`: Kubernetes namespace for deployment <br />
+✦ `GIT_USERNAME`: Your GitHub username <br />
+✦ `GIT_REPO_NAME`: Name of your GitHub repository <br />
+✦ `SERVICE_FOLDER_NAME`: Folder containing your service code<br />
+✦ `GIT_BRANCH`: Branch to monitor (default: main)<br />
+✦ `REGISTRY`: Container registry (default: ghcr.io)<br />
+✦ `DOCKER_USERNAME`: Docker/GitHub username<br />
+✦ `IMAGE_REPOSITORY`: Full image repository path<br />
+✦ `APP_NAME`: Application name for deployment<br />
+✦ `REPLICA_COUNT`: Number of pod replicas<br />
+✦ `SERVICE_PORT`: Service exposure port<br />
+✦ `CONTAINER_PORT`: Container internal port<br />
+✦ `SERVICE_TYPE`: Kubernetes service type<br />
+✦ `CONTAINER_NAME`: Name of the container<br />
+✦ `INGRESS_HOST`: Ingress hostname<br />
+✦ `CRON_SCHEDULE`: Workflow schedule (default: every 30 minutes)<br />
 
 #### 🔐 In `workflow/secrets-and-volumes-template.yaml`
 ✦ Replace placeholders for GitHub and registry tokens
