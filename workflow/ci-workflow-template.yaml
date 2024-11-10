@@ -1,7 +1,8 @@
 apiVersion: argoproj.io/v1alpha1
 kind: Workflow
 metadata:
-  generateName: ci-cd-workflow-
+  generateName: $SERVICE_NAME-workflow-
+  name: $SERVICE_NAME-ci-template
 spec:
   # Use the ServiceAccount in the service namespace
   serviceAccountName: $SERVICE_NAME-workflow-sa
