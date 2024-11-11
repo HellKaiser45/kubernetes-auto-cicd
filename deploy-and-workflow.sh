@@ -145,7 +145,7 @@ deploy_workflows() {
 
     # Cleanup existing resources
     log "Cleaning up Persistent Volume Claims..."
-    cleanup_pvc "$SAFE_SERVICE_NAMESPACE" "version-pvc"
+    cleanup_pvc "$SAFE_SERVICE_NAMESPACE" "${SAFE_SERVICE_NAME}-version-pvc"
 
     log "Cleaning up existing resources..."
     kubectl delete -n "$SAFE_SERVICE_NAMESPACE" secrets git-credentials registry-credentials github-registry-secret 2>/dev/null || true
