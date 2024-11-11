@@ -169,10 +169,8 @@ spec:
       command: [ "/bin/sh", "-c" ]
       args:
       - |
-        # Restart deployment
+        # Restart deployment to ensure new image pull
         kubectl rollout restart deployment/{{workflow.parameters.deployment-name}} -n {{workflow.parameters.deployment-namespace}}
 
         # Wait for rollout to complete
         kubectl rollout status deployment/{{workflow.parameters.deployment-name}} -n {{workflow.parameters.deployment-namespace}}
-
-        # Optional: Verify deployment status

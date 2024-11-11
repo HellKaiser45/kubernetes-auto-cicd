@@ -3,9 +3,9 @@ set -euo pipefail
 
 # Comprehensive Deployment Configuration
 # ======================================
-
+export CONTAINER_NAME="your-container-name"
 # Core Service Configuration
-export SERVICE_NAME=your-service-name
+export SERVICE_NAME=$CONTAINER_NAME
 export SERVICE_NAMESPACE=your-namespace
 
 # GitHub Repository Details
@@ -14,19 +14,19 @@ export GIT_REPO_NAME=your-repo-name
 export SERVICE_FOLDER_NAME=your-service-folder
 export GIT_BRANCH=main
 
-# Container Registry Details
-export REGISTRY=ghcr.io
-export DOCKER_USERNAME=your-docker-username
-export IMAGE_REPOSITORY="${REGISTRY}/${DOCKER_USERNAME}/${SERVICE_FOLDER_NAME}"
-export IMAGE_TAG=latest
-
 # Deployment Configuration
-export APP_NAME="your-app-name"
+export APP_NAME=$CONTAINER_NAME
 export REPLICA_COUNT=2
 export SERVICE_PORT=80
 export CONTAINER_PORT=80
 export SERVICE_TYPE="ClusterIP"
-export CONTAINER_NAME="your-container-name"
+
+
+# Container Registry Details
+export REGISTRY=ghcr.io
+export DOCKER_USERNAME=your-docker-username
+export IMAGE_REPOSITORY="${REGISTRY}/${DOCKER_USERNAME}/${CONTAINER_NAME}"
+export IMAGE_TAG=latest
 
 # Networking Configuration
 export INGRESS_HOST="your-service.your-domain.dev"
@@ -40,9 +40,6 @@ export WORKFLOW_TEMPLATE_NAME="${SERVICE_NAME}-ci-template"
 
 # Image Pull Configuration
 export IMAGE_PULL_SECRET="github-registry-secret"
-
-# Rest of the script remains the same as in the previous version...
-# (Keeping all the existing functions and logic)
 
 # Logging function with enhanced debugging
 log() {
@@ -111,6 +108,36 @@ cleanup_pvc() {
     log "PVC cleanup completed for $pvc_name"
 }
 
+# New function to delete pods, deployments, and services
+delete_resources() {
+    local namespace=$1
+
+    log "Deleting resources in namespace $namespace..."
+
+    # Delete pods
+    log "Deleting all pods..."
+    kubectl delete pods --all -n "$namespace" 2>/dev/null || true
+
+    # Delete deployments
+    log "Deleting all deployments..."
+    kubectl delete deployments --all -n "$namespace" 2>/dev/null || true
+
+    # Delete services
+    log "Deleting all services..."
+    kubectl delete services --all -n "$namespace" 2>/dev/null || true
+
+    # Delete ingress resources
+    log "Deleting all ingress resources..."
+    kubectl delete ingress --all -n "$namespace" 2>/dev/null || true
+
+    # Delete workflows and cronworkflows
+    log "Deleting all workflows and cronworkflows..."
+    kubectl delete workflows --all -n "$namespace" 2>/dev/null || true
+    kubectl delete cronworkflows --all -n "$namespace" 2>/dev/null || true
+
+    log "Resource deletion completed in namespace $namespace"
+}
+
 # Workflow and Resource Deployment with Detailed Logging
 deploy_workflows() {
     log "Creating namespace $SAFE_SERVICE_NAMESPACE..."
@@ -159,6 +186,12 @@ deploy_application() {
     # Use envsubst to replace variables
     envsubst < "$TEMP_CONFIG" > "${TEMP_CONFIG}.processed"
 
+    # Explicitly delete existing resources before applying
+    log "Deleting existing application resources..."
+    kubectl delete -n "$SAFE_SERVICE_NAMESPACE" deployment "$APP_NAME" 2>/dev/null || true
+    kubectl delete -n "$SAFE_SERVICE_NAMESPACE" service "$APP_NAME" 2>/dev/null || true
+    kubectl delete -n "$SAFE_SERVICE_NAMESPACE" ingress "$APP_NAME-ingress" 2>/dev/null || true
+
     # Validate the modified configuration
     log "Validating application configuration..."
     if ! kubectl apply -f "${TEMP_CONFIG}.processed" --dry-run=client; then
@@ -183,6 +216,14 @@ deploy_application() {
 
 # Main Deployment Workflow with Error Handling
 main() {
+    local delete_flag=${1:-false}
+
+    if [ "$delete_flag" = "delete" ]; then
+        log "Running in delete mode..."
+        delete_resources "$SAFE_SERVICE_NAMESPACE"
+        return 0
+    fi
+
     log "Starting deployment process..."
 
     deploy_workflows || {
@@ -199,4 +240,4 @@ main() {
 }
 
 # Execute main deployment
-main
+main "$@"
