@@ -35,7 +35,7 @@ spec:
   serviceAccountName: $SERVICE_NAME-workflow-sa
 
   volumes:
-  - name: version-volume
+  - name: $SERVICE_NAME-version-volume
     persistentVolumeClaim:
       claimName: version-pvc
   # Use volumeClaimTemplates for automatic PVC management

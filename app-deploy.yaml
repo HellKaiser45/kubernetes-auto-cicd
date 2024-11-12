@@ -6,7 +6,7 @@ metadata:
   annotations:
     kubernetes.io/change-cause: "Image update trigger"
 spec:
-  replicas: 2
+  replicas: $REPLICA_COUNT
   selector:
     matchLabels:
       app: ${APP_NAME}
@@ -23,7 +23,7 @@ spec:
         image: ${IMAGE_REPOSITORY}:${IMAGE_TAG}
         imagePullPolicy: Always
         ports:
-        - containerPort: 80
+        - containerPort: $CONTAINER_PORT
         env:
         - name: SITE_ORIGIN
           value: "${SITE_ORIGIN}"
@@ -42,8 +42,8 @@ spec:
     app: ${APP_NAME}
   ports:
   - protocol: TCP
-    port: 80
-    targetPort: 80
+    port: $SERVICE_PORT
+    targetPort: $CONTAINER_PORT
   type: ClusterIP
 ---
 apiVersion: networking.k8s.io/v1

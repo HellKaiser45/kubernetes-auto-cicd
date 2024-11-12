@@ -62,113 +62,68 @@ handle_error() {
 # Trap errors with line number and command
 trap 'handle_error $LINENO "$BASH_COMMAND"' ERR
 
-# Sanitize names for Kubernetes compatibility
-SAFE_SERVICE_NAME=$(echo "$SERVICE_NAME" | tr '[:upper:]' '[:lower:]' | sed 's/[^a-z0-9-]//g')
-SAFE_SERVICE_NAMESPACE=$(echo "$SERVICE_NAMESPACE" | tr '[:upper:]' '[:lower:]' | sed 's/[^a-z0-9-]//g')
-
-# Advanced PVC Cleanup Function with Extensive Logging
+# Advanced PVC Cleanup Function with Simplified Deletion
 cleanup_pvc() {
-    local namespace=$1
-    local pvc_name=$2
 
-    log "Attempting to cleanup PVC: $pvc_name in namespace $namespace"
+    log "Attempting to cleanup PVC: $SERVICE_NAME-version-pvc in namespace $SERVICE_NAMESPACE"
 
-    # Detailed logging of current state
-    log "Current PVC status:"
-    kubectl get pvc "$pvc_name" -n "$namespace" || true
+    # Simplified PVC deletion
+    log "Deleting PVC $SERVICE_NAME-version-pvc in namespace $SERVICE_NAMESPACE"
+    kubectl delete pvc $SERVICE_NAME-version-pvc -n $SERVICE_NAMESPACE 2>/dev/null || true
 
-    # List all pods in the namespace
-    log "Listing pods in namespace $namespace:"
-    kubectl get pods -n "$namespace" || true
 
-    # Find and delete pods using the PVC
-    local pods=$(kubectl get pods -n "$namespace" -o jsonpath='{.items[*].metadata.name}')
-
-    for pod in $pods; do
-        if kubectl get pod "$pod" -n "$namespace" -o jsonpath='{.spec.volumes[*].persistentVolumeClaim.claimName}' | grep -q "$pvc_name"; then
-            log "Deleting pod $pod using PVC $pvc_name"
-            kubectl delete pod "$pod" -n "$namespace" --grace-period=0 --force 2>/dev/null || true
-        fi
-    done
-
-    # Remove finalizers and force delete PVC
-    log "Removing PVC finalizers..."
-    kubectl patch pvc "$pvc_name" -n "$namespace" -p '{"metadata":{"finalizers":null}}' --type=merge 2>/dev/null || true
-
-    log "Force deleting PVC..."
-    kubectl delete pvc "$pvc_name" -n "$namespace" --grace-period=0 --force 2>/dev/null || true
-
-    # Delete associated Persistent Volumes
-    local pvs=$(kubectl get pv | grep "$pvc_name" | awk '{print $1}')
-    for pv in $pvs; do
-        log "Deleting associated Persistent Volume: $pv"
-        kubectl delete pv "$pv" --grace-period=0 --force 2>/dev/null || true
-    done
-
-    log "PVC cleanup completed for $pvc_name"
+    log "PVC cleanup completed for $SERVICE_NAME-version-pvc"
 }
 
 # New function to delete pods, deployments, and services
 delete_resources() {
-    local namespace=$1
+    log "Deleting resources in namespace $SERVICE_NAMESPACE..."
 
-    log "Deleting resources in namespace $namespace..."
-
-    # Delete pods
-    log "Deleting all pods..."
-    kubectl delete pods --all -n "$namespace" 2>/dev/null || true
+    log "Deleting services "$APP_NAME""
+    kubectl delete services "$APP_NAME" -n "$SERVICE_NAMESPACE" 2>/dev/null || true
 
     # Delete deployments
-    log "Deleting all deployments..."
-    kubectl delete deployments --all -n "$namespace" 2>/dev/null || true
+    log "Deleting deployments "$APP_NAME""
+    kubectl delete deployments "$APP_NAME" -n "$SERVICE_NAMESPACE" 2>/dev/null || true
 
-    # Delete services
-    log "Deleting all services..."
-    kubectl delete services --all -n "$namespace" 2>/dev/null || true
-
-    # Delete ingress resources
-    log "Deleting all ingress resources..."
-    kubectl delete ingress --all -n "$namespace" 2>/dev/null || true
+    log "Deleting ingress $APP_NAME-ingress"
+    kubectl delete ingress $APP_NAME-ingress -n "$SERVICE_NAMESPACE" 2>/dev/null || true
 
     # Delete workflows and cronworkflows
-    log "Deleting all workflows and cronworkflows..."
-    kubectl delete workflows --all -n "$namespace" 2>/dev/null || true
-    kubectl delete cronworkflows --all -n "$namespace" 2>/dev/null || true
+    log "Deleting all workflowtemplates and cronworkflows..."
+    kubectl delete workflowtemplates $SERVICE_NAME-ci-template -n "$SERVICE_NAMESPACE" 2>/dev/null || true
+    kubectl delete cronworkflows $SERVICE_NAME-repo-monitor -n "$SERVICE_NAMESPACE" 2>/dev/null || true
 
-    log "Resource deletion completed in namespace $namespace"
+    log "Deleting secrets"
+    kubectl delete -n "$SERVICE_NAMESPACE" secrets git-credentials registry-credentials github-registry-secret 2>/dev/null || true
+
+    log "Deleting service account"
+    kubectl delete -n "$SERVICE_NAMESPACE" serviceaccount "$SERVICE_NAME-workflow-sa" 2>/dev/null || true
+
+    log "Deleting cluster role and binding"
+    kubectl delete -n "$SERVICE_NAMESPACE" clusterrole "$SERVICE_NAME-workflow-role" 2>/dev/null || true
+    kubectl delete -n "$SERVICE_NAMESPACE" clusterrolebinding "$SERVICE_NAME-workflow-rolebinding" 2>/dev/null || true
+
+    log "Resource deletion completed in namespace $SERVICE_NAMESPACE"
 }
 
 # Workflow and Resource Deployment with Detailed Logging
 deploy_workflows() {
-    log "Creating namespace $SAFE_SERVICE_NAMESPACE..."
-    kubectl create namespace "$SAFE_SERVICE_NAMESPACE" 2>/dev/null || true
-
-    # Cleanup existing resources
-    log "Cleaning up Persistent Volume Claims..."
-    cleanup_pvc "$SAFE_SERVICE_NAMESPACE" "${SAFE_SERVICE_NAME}-version-pvc"
-
-    log "Cleaning up existing resources..."
-    kubectl delete -n "$SAFE_SERVICE_NAMESPACE" secrets git-credentials registry-credentials github-registry-secret 2>/dev/null || true
-    kubectl delete -n "$SAFE_SERVICE_NAMESPACE" serviceaccount "$SAFE_SERVICE_NAME-workflow-sa" 2>/dev/null || true
-    kubectl delete -n "$SAFE_SERVICE_NAMESPACE" clusterrole "$SAFE_SERVICE_NAME-workflow-role" 2>/dev/null || true
-    kubectl delete -n "$SAFE_SERVICE_NAMESPACE" clusterrolebinding "$SAFE_SERVICE_NAME-workflow-rolebinding" 2>/dev/null || true
-    kubectl delete -n "$SAFE_SERVICE_NAMESPACE" workflow --all 2>/dev/null || true
-    kubectl delete -n "$SAFE_SERVICE_NAMESPACE" cronworkflow "$SAFE_SERVICE_NAME-repo-monitor" 2>/dev/null || true
 
     # Apply secrets and volumes
     log "Applying secrets and volumes..."
-    envsubst < workflow/secrets-and-volumes-template.yaml | kubectl apply -n "$SAFE_SERVICE_NAMESPACE" -f - || {
+    envsubst < workflow/secrets-and-volumes-template.yaml | kubectl apply -n "$SERVICE_NAMESPACE" -f - || {
         log "Failed to apply secrets and volumes"
         return 1
     }
 
     # Create workflow template
     log "Creating workflow template..."
-    envsubst < workflow/ci-workflow-template.yaml | kubectl create -n "$SAFE_SERVICE_NAMESPACE" -f - 2>/dev/null || true
+    envsubst < workflow/ci-workflow-template.yaml | kubectl create -n "$SERVICE_NAMESPACE" -f - 2>/dev/null || true
 
     # Create cron workflow
     log "Creating cron workflow..."
-    envsubst < workflow/cron-workflow.yaml | kubectl create -n "$SAFE_SERVICE_NAMESPACE" -f - 2>/dev/null || true
+    envsubst < workflow/cron-workflow.yaml | kubectl create -n "$SERVICE_NAMESPACE" -f - 2>/dev/null || true
 
     log "Workflows applied successfully!"
 }
@@ -177,52 +132,24 @@ deploy_workflows() {
 deploy_application() {
     log "Starting application deployment..."
 
-    # Temporary file for processed configuration
-    TEMP_CONFIG=$(mktemp)
-
-    # Create a copy of the original configuration
-    cp app-deploy.yaml "$TEMP_CONFIG"
-
-    # Use envsubst to replace variables
-    envsubst < "$TEMP_CONFIG" > "${TEMP_CONFIG}.processed"
-
-    # Explicitly delete existing resources before applying
-    log "Deleting existing application resources..."
-    kubectl delete -n "$SAFE_SERVICE_NAMESPACE" deployment "$APP_NAME" 2>/dev/null || true
-    kubectl delete -n "$SAFE_SERVICE_NAMESPACE" service "$APP_NAME" 2>/dev/null || true
-    kubectl delete -n "$SAFE_SERVICE_NAMESPACE" ingress "$APP_NAME-ingress" 2>/dev/null || true
-
-    # Validate the modified configuration
-    log "Validating application configuration..."
-    if ! kubectl apply -f "${TEMP_CONFIG}.processed" --dry-run=client; then
-        log "Configuration validation failed"
-        cat "${TEMP_CONFIG}.processed"
-        rm "$TEMP_CONFIG" "${TEMP_CONFIG}.processed"
-        return 1
-    fi
-
-    # Deploy the configuration
-    log "Applying application configuration..."
-    kubectl apply -f "${TEMP_CONFIG}.processed" || {
-        log "Failed to apply application configuration"
+    envsubst < app-deploy.yaml | kubectl apply -n "$SERVICE_NAMESPACE" -f - || {
+        log "Failed to deploy"
         return 1
     }
-
-    # Clean up temporary files
-    rm "$TEMP_CONFIG" "${TEMP_CONFIG}.processed"
 
     log "Application deployed successfully!"
 }
 
 # Main Deployment Workflow with Error Handling
 main() {
-    local delete_flag=${1:-false}
+    log "Creating namespace $SERVICE_NAMESPACE..."
+    kubectl create namespace "$SERVICE_NAMESPACE" 2>/dev/null || true
 
-    if [ "$delete_flag" = "delete" ]; then
-        log "Running in delete mode..."
-        delete_resources "$SAFE_SERVICE_NAMESPACE"
-        return 0
-    fi
+    log "Cleaning up existing resources..."
+    delete_resources
+
+    log "Cleaning up Persistent Volume Claims..."
+    cleanup_pvc
 
     log "Starting deployment process..."
 
